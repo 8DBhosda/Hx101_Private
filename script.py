@@ -360,6 +360,29 @@ def draw_status_badge(ax, x_center, y_center, width, height, style):
     )
 
 
+def _hex_to_rgb(h: str):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i+2], 16) / 255 for i in (0, 2, 4))
+
+
+def _rgb_to_hex(rgb):
+    return "#" + "".join(f"{int(round(c*255)):02X}" for c in rgb)
+
+
+def _make_gradient(c1: str, c2: str, n: int):
+    r1, g1, b1 = _hex_to_rgb(c1)
+    r2, g2, b2 = _hex_to_rgb(c2)
+    out = []
+    for i in range(n):
+        t = i / max(n - 1, 1)
+        out.append(_rgb_to_hex((
+            r1 + (r2 - r1) * t,
+            g1 + (g2 - g1) * t,
+            b1 + (b2 - b1) * t,
+        )))
+    return out
+
+
 def save_table_image(
     df: pd.DataFrame,
     today: date,
@@ -377,13 +400,6 @@ def save_table_image(
     )
 
     n_rows = len(display_df)
-
-    # -----------------------------------------------------------------
-    # Layout constants (in axes fraction, 0..1 over the table area)
-    # -----------------------------------------------------------------
-    col_edges = [0.0, 0.055, 0.075, 0.34, 0.455, 0.575, 0.655, 0.79, 1.0]
-    # cols: rank-strip | rank | name | status | start | last | gmp | lot | profit
-    # (we'll actually use fewer, defined below explicitly for clarity)
 
     columns = [
         ("", 0.000, 0.045),          # colored left accent strip
@@ -406,16 +422,13 @@ def save_table_image(
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=190)
     fig.patch.set_facecolor(COLOR_BG)
 
-    # Whole-figure axis for the header banner + card container
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.axis("off")
 
     margin_x = 0.018
-    margin_top = 1 - (0.10 / fig_h) * 10  # placeholder, recompute below
 
-    # Fractions of total figure height
     header_frac = header_h_in / fig_h
     footer_frac = footer_h_in / fig_h
     table_frac = 1 - header_frac - footer_frac
@@ -425,9 +438,7 @@ def save_table_image(
     card_top = 1 - 0.012
     card_bottom = 0.012
 
-    # -------------------------------------------------------------
-    # Card background (rounded, white) behind everything
-    # -------------------------------------------------------------
+    # Card background (rounded, white)
     card = mpatches.FancyBboxPatch(
         (card_left, card_bottom),
         card_right - card_left,
@@ -439,9 +450,7 @@ def save_table_image(
     )
     ax.add_patch(card)
 
-    # -------------------------------------------------------------
     # Header gradient banner
-    # -------------------------------------------------------------
     header_bottom = card_top - header_frac
     n_grad = 120
     grad_colors = _make_gradient(COLOR_HEADER_GRAD_1, COLOR_HEADER_GRAD_2, n_grad)
@@ -456,17 +465,6 @@ def save_table_image(
             zorder=1,
         )
         ax.add_patch(rect)
-    # Round only the top corners: overlay a mask isn't trivial with patches,
-    # so we clip via a rounded rect on top using the card's own path.
-    header_mask = mpatches.FancyBboxPatch(
-        (card_left, header_bottom),
-        card_right - card_left,
-        card_top - header_bottom,
-        boxstyle="round,pad=0,rounding_size=0.012",
-        linewidth=0,
-        facecolor="none",
-        zorder=1,
-    )
 
     # Header text
     text_left = card_left + 0.018
@@ -501,8 +499,8 @@ def save_table_image(
         fontsize=13,
         fontweight="bold",
         color="#FFFFFF",
-        va="top",
         ha="right",
+        va="top",
         zorder=2,
     )
     # LIVE badge
@@ -522,7 +520,7 @@ def save_table_image(
     ax.text(
         live_cx,
         live_cy,
-        "● LIVE DATA",
+        "\u25CF LIVE DATA",
         fontsize=8,
         fontweight="bold",
         color="#FFFFFF",
@@ -531,9 +529,7 @@ def save_table_image(
         zorder=3,
     )
 
-    # -------------------------------------------------------------
-    # Table header row (column labels) just under the banner
-    # -------------------------------------------------------------
+    # Table header row
     col_header_h = table_frac * 0.09
     col_header_top = header_bottom
     col_header_bottom = col_header_top - col_header_h
@@ -569,9 +565,7 @@ def save_table_image(
             zorder=2,
         )
 
-    # -------------------------------------------------------------
     # Data rows
-    # -------------------------------------------------------------
     rows_top = col_header_bottom
     rows_bottom = card_bottom + footer_frac * 0.15
     row_height = (rows_top - rows_bottom) / n_rows
@@ -595,7 +589,6 @@ def save_table_image(
         )
         ax.add_patch(bg_rect)
 
-        # thin separator line
         ax.plot(
             [card_left, card_right],
             [y_bottom, y_bottom],
@@ -606,7 +599,7 @@ def save_table_image(
 
         rank = int(r["rank"])
 
-        # Left accent strip: colored by rank tier (top 3 highlighted)
+        # Left accent strip
         accent_color = RANK_MEDAL.get(rank, "#C7D2FE")
         accent_rect = mpatches.Rectangle(
             (card_left, y_bottom),
@@ -649,7 +642,7 @@ def save_table_image(
             ha="left", va="center", zorder=4,
         )
 
-        # Status badge (drawn, not emoji)
+        # Status badge
         style = STATUS_STYLE[r["status_key"]]
         status_cx = col_x((columns[3][1] + columns[3][2]) / 2)
         draw_status_badge(
@@ -669,7 +662,7 @@ def save_table_image(
 
         # GMP
         gmp_val = r["current gmp"]
-        gmp_text = "₹0" if pd.isna(gmp_val) else f"₹{int(gmp_val):,}"
+        gmp_text = "₹--" if pd.isna(gmp_val) else f"₹{int(gmp_val):,}"
         gmp_color = "#94A3B8" if pd.isna(gmp_val) else "#2563EB"
         gmp_cx = col_x((columns[6][1] + columns[6][2]) / 2)
         ax.text(gmp_cx, y_center, gmp_text, fontsize=10.5, fontweight="bold",
@@ -685,7 +678,7 @@ def save_table_image(
         # Est profit/lot -> colored chip by tier
         profit_val = r["Est. profit/lot"]
         face, txt_color = profit_tier_color(profit_val)
-        profit_text = "₹0" if pd.isna(profit_val) else f"₹{int(profit_val):,}"
+        profit_text = "₹--" if pd.isna(profit_val) else f"₹{int(profit_val):,}"
         _, chip_f0, chip_f1 = columns[8]
         chip_w = (chip_f1 - chip_f0) * (card_right - card_left) - 0.018
         chip_h = row_height * 0.5
@@ -702,9 +695,7 @@ def save_table_image(
         ax.text(chip_cx, y_center, profit_text, fontsize=10.3, fontweight="bold",
                  color=txt_color, ha="center", va="center", zorder=4)
 
-    # -------------------------------------------------------------
-    # Footer legend (drawn dots, not emoji) + source
-    # -------------------------------------------------------------
+    # Footer legend
     footer_y = card_bottom + footer_frac * 0.5
     lx = card_left + 0.016
     for key in ["open", "closing_today", "closed"]:
@@ -730,29 +721,6 @@ def save_table_image(
     plt.close(fig)
 
 
-def _hex_to_rgb(h: str):
-    h = h.lstrip("#")
-    return tuple(int(h[i:i+2], 16) / 255 for i in (0, 2, 4))
-
-
-def _rgb_to_hex(rgb):
-    return "#" + "".join(f"{int(round(c*255)):02X}" for c in rgb)
-
-
-def _make_gradient(c1: str, c2: str, n: int):
-    r1, g1, b1 = _hex_to_rgb(c1)
-    r2, g2, b2 = _hex_to_rgb(c2)
-    out = []
-    for i in range(n):
-        t = i / max(n - 1, 1)
-        out.append(_rgb_to_hex((
-            r1 + (r2 - r1) * t,
-            g1 + (g2 - g1) * t,
-            b1 + (b2 - b1) * t,
-        )))
-    return out
-
-
 def main() -> None:
     today = date.today()
 
@@ -774,17 +742,19 @@ def main() -> None:
     csv_path = OUTPUT_DIR / f"ipo_gmp_{today.isoformat()}.csv"
     df.to_csv(csv_path, index=False)
 
-    # Save image
-    image_path = OUTPUT_DIR / f"ipo_gmp_{today.isoformat()}.png"
+    # Save image (fixed filename for a stable link, plus a dated copy)
+    latest_path = OUTPUT_DIR / "latest.png"
+    dated_path = OUTPUT_DIR / f"ipo_gmp_{today.isoformat()}.png"
 
-    save_table_image(
-        df,
-        today,
-        image_path,
-    )
+    save_table_image(df, today, latest_path)
+
+    # keep a dated copy too, for history
+    import shutil
+    if latest_path.exists():
+        shutil.copyfile(latest_path, dated_path)
 
     print(f"CSV   : {csv_path}")
-    print(f"Image : {image_path}")
+    print(f"Image : {latest_path}  (also saved as {dated_path})")
 
 
 if __name__ == "__main__":
