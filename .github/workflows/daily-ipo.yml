@@ -3,6 +3,7 @@ name: Daily IPO GMP Tracker
 on:
   schedule:
     - cron: "30 3 * * *"   # 3:30 UTC = 9:00 AM IST, every day
+    - cron: "30 12 * * *"   # 6:00 PM IST
   workflow_dispatch:        # lets you also trigger it manually from the Actions tab
 
 permissions:
